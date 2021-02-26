@@ -1,4 +1,4 @@
-Forked from https://github.com/ponteineptique/boudams. After tagging this version compares the original and the tokenized string to add more spacing information, and shows any added or deleted space. It can insert XML entities for example, to represent the tokenization with `tei:orig | tei:reg` elements, for example.
+Forked from https://github.com/ponteineptique/boudams. After tagging this version compares the original and the tokenized string to add more spacing information, and shows any added or deleted space. For example, it can insert XML entities, to represent the tokenization with `tei:orig | tei:reg` elements.
 
 *Caveat*: for now it works only with texts that keep linebreaks: this version is designed to be used as the first operation of the edition workflow:
 - HTR|OCR
