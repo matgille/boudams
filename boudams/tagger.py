@@ -20,6 +20,75 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 MAX_LENGTH = 150
 
 
+def manage_space(filename, spacing_code={'space-nospace': '&esp-rien;', 'nospace-space': '&rien-esp;'}):
+    """
+    This function compares the original strings with the tokenized ones
+    to show if the space has been added or not by Boudams.
+    For now it works with texts with linebreaks.
+    Args:
+        filename: the file before tokenization
+        spacing_code: the string that represents <the space added> and <the space removed>.
+
+    Returns:
+
+    """
+    print("Retrieving deleted and added spaces information")
+    with open(filename, 'r') as input_file:
+        line_list = input_file.read().splitlines()
+        tokenized_filename = filename.replace(".txt", ".tokenized.txt")
+        tokenized_filename_entities = filename.replace(".txt", ".tokenized_entities.txt")
+    with open(tokenized_filename, 'r') as tokenized_file:
+        tokenized_lines_list = tokenized_file.read().splitlines()
+        tokenized_lines_list.pop(-1)
+
+    # We now can compare each line
+    orig_tok_zipped_list = zip(line_list, tokenized_lines_list)
+
+    out_list = []
+    for original, tokenized in orig_tok_zipped_list:
+        true_index_tokenized = 0
+        true_index_original = 0
+        multiple_spaces = re.compile("\s{2,}")
+
+        # TODO: see how to get the info about whether we break a word
+        #  or not: here we are removing the trailing (and leading) spaces.
+        original = original.strip()
+        original = multiple_spaces.sub(" ", original)
+        tokenized = tokenized.strip()
+        tokenized = multiple_spaces.sub(" ", tokenized)
+
+        full_spacing_information_list = []
+        while true_index_tokenized < len(tokenized):
+            # print(f"Comparing {tokenized[true_index_tokenized]} and {original[true_index_original]}")
+            if tokenized[true_index_tokenized] == " " and original[true_index_original] == " ":
+                # The two strings are a space: nothing to do
+                full_spacing_information_list.append(" ")
+                true_index_tokenized += 1
+            elif tokenized[true_index_tokenized] == " " and original[true_index_original] != " ":
+                # Boudams added a space: let's insert the corresponding entity (nothing > space).
+                full_spacing_information_list.append(spacing_code["nospace-space"])
+                full_spacing_information_list.append(tokenized[true_index_tokenized + 1])
+                # We shift the string a character ahead
+                true_index_tokenized += 2
+            elif tokenized[true_index_tokenized] != " " and original[true_index_original] == " ":
+                # Boudams removed a space: : let's put the corresponding entity (space > nothing).
+                full_spacing_information_list.append(spacing_code["space-nospace"])
+                # We shift the string a character behind
+                true_index_tokenized += 0
+            else:
+                # The last possibility is that the strings are equal
+                full_spacing_information_list.append(tokenized[true_index_tokenized])
+                # print(original[:true_index_original])
+                true_index_tokenized += 1
+            true_index_original += 1
+
+        out_list.append("".join(full_spacing_information_list))
+
+    with open(tokenized_filename_entities, "w") as output_file:
+        for line in out_list:
+            output_file.write(f"{line}\n")
+
+
 class BoudamsTagger:
     def __init__(
             self,
@@ -205,4 +274,26 @@ class BoudamsTagger:
                     treated.append(string)
             strings = treated
 
-        yield from self.annotate(strings, batch_size=batch_size)
+
+        # Some linebreaks are removed by the tagger, when they are at the end of the string to be tagged
+        annotated_list = [element for element in list(self.annotate(strings, batch_size=batch_size))]
+
+        # Let's retrieve the index of the strings in which linebreak are removed
+        original_tokenized_zipped_list = list(zip(strings, annotated_list))
+        index_list = []
+        for i, (original_string, tokenized_string) in enumerate(original_tokenized_zipped_list):
+            if "\n" in original_string and "\n" not in tokenized_string:
+                index_list.append(i)
+
+        # And reinject them.
+        tokenized_list = []
+        for i, (original, tokenized) in enumerate(original_tokenized_zipped_list):
+            if i in index_list:
+                tokenized_list.append(f"{tokenized}\n")
+            else:
+                tokenized_list.append(tokenized)
+
+        # We return a generator that will be parsed by the tag() function
+        return (item for item in tokenized_list)
+        # yield from self.annotate(strings, batch_size=batch_size)
+
