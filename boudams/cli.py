@@ -260,11 +260,12 @@ def test(test_path, model_tar, csv_file, batch_size, device, debug, verbose):
 
 @cli.command("tag")
 @click.argument("model", type=click.Path(exists=True, file_okay=True, dir_okay=False))
-@click.option("--linebreaks", default=True)
 @click.argument("filename", nargs=-1, type=click.File("r"))
 @click.option("--device", default="cpu", help="Device to use for the network (cuda, cpu, etc.)")
-@click.option("--entities", default=False)
-@click.option("--spaces_formatting", default={'space-nospace': '&esp-rien;', 'nospace-space': '&rien-esp;'})
+@click.option("--linebreaks", type=bool, default=True, help="Does the input text contains linebreaks? Default: True")
+@click.option("--entities", type=bool, default=False,  help="Whether to show or not spaces to be added and deleted. Default: False")
+@click.option("--spaces_formatting", type=dict, default={'space-nospace': '&esp-rien;', 'nospace-space': '&rien-esp;'},
+              help="The string that represent an added and a space. Default: two XML entity-like strings.")
 def tag(model, filename,  entities, spaces_formatting, device="cpu", batch_size=64, linebreaks=True):
     """ Tag all [FILENAME] using [MODEL]"""
     print("Loading the model.")
