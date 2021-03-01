@@ -2,7 +2,7 @@ Forked from https://github.com/ponteineptique/boudams. After tagging this versio
 
 *Caveat*: for now it works only with texts that keep linebreaks: this version is designed to be used as the first operation of the edition workflow:
 - HTR|OCR
-- segmentation | handling of hyphens (TBC)
+- segmentation | handling of hyphens (coming soon)
 - handling of abbreviations  
 - etc...
 
