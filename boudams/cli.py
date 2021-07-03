@@ -4,7 +4,7 @@ import tqdm
 import json
 import datetime
 
-from boudams.tagger import BoudamsTagger
+from boudams.tagger import BoudamsTagger, manage_space
 from boudams.trainer import Trainer
 from boudams.encoder import LabelEncoder, DatasetIterator
 
@@ -35,7 +35,7 @@ def dataset():
 @click.option("--noise_char_random", type=float, default=0.2, help="Probability to add [NOISE_CHAR] in between words")
 @click.option("--max_noise_char", type=int, default=2, help="Maximum amount of [NOISE_CHAR] to add sequentially")
 def convert(method, output_path, input_path, min_words, max_words, min_char_length,
-             max_char_length, random_keep, max_kept, noise_char, noise_char_random, max_noise_char):
+            max_char_length, random_keep, max_kept, noise_char, noise_char_random, max_noise_char):
     """ Build sequence training data using files with [METHOD] format in [INPUT_PATH] and saving the
     converted format into [OUTPUT_PATH]
 
@@ -100,7 +100,6 @@ def sizes(png_path, char_count, input_path):
             }))
 
 
-
 @dataset.command("generate")
 @click.argument("output_path", type=click.Path(file_okay=False))
 @click.argument("input_path", nargs=-1, type=click.Path(file_okay=True, dir_okay=False))
@@ -121,6 +120,7 @@ def generate(output_path, input_path, max_char_length, train_ratio, test_ratio):
                        ratio=(train_ratio, dev_ratio, test_ratio))
     dataset_base.check(output_path, max_length=max_char_length)
 
+
 @cli.command("template")
 @click.argument("filename", type=click.File(mode="w"))
 def template(filename):
@@ -129,16 +129,16 @@ def template(filename):
         "name": "model",
         "max_sentence_size": 150,
         "network": {  # Configuration of the encoder
-          'emb_enc_dim': 256,
-          'enc_n_layers': 10,
-          'enc_kernel_size': 3,
-          'enc_dropout': 0.25
+            'emb_enc_dim': 256,
+            'enc_n_layers': 10,
+            'enc_kernel_size': 3,
+            'enc_dropout': 0.25
         },
         "model": 'linear-conv',
         "learner": {
-           'lr_grace_periode': 2,
-           'lr_patience': 2,
-           'lr': 0.0001
+            'lr_grace_periode': 2,
+            'lr_patience': 2,
+            'lr': 0.0001
         },
         "label_encoder": {
             "normalize": True,
@@ -168,8 +168,8 @@ def train(config_files, epochs, batch_size, device, debug):
     for config_file in config_files:
         config = json.load(config_file)
 
-        train_path, dev_path, test_path = config["datasets"]["train"],\
-                                          config["datasets"]["dev"],\
+        train_path, dev_path, test_path = config["datasets"]["train"], \
+                                          config["datasets"]["dev"], \
                                           config["datasets"]["test"]
 
         vocabulary = LabelEncoder(
@@ -243,7 +243,7 @@ def test(test_path, model_tar, csv_file, batch_size, device, debug, verbose):
 
         scorer = trainer.test(test_dataset, batch_size=batch_size, class_report=verbose)
         print("Saving confusion matrix...")
-        scorer.plot_confusion_matrix(config_file+".png")
+        scorer.plot_confusion_matrix(config_file + ".png")
         print(scorer.scores)
         print(scorer.report)
         r = scorer.scores._asdict()
@@ -262,32 +262,46 @@ def test(test_path, model_tar, csv_file, batch_size, device, debug, verbose):
 @click.argument("model", type=click.Path(exists=True, file_okay=True, dir_okay=False))
 @click.argument("filename", nargs=-1, type=click.File("r"))
 @click.option("--device", default="cpu", help="Device to use for the network (cuda, cpu, etc.)")
-def tag(model, filename, device="cpu", batch_size=64):
+@click.option("--linebreaks", type=bool, default=True, help="Does the input text contain linebreaks? Default: True.")
+@click.option("--entities", type=bool, default=False,  help="Whether to show or not spaces to be added and deleted. "
+                                                            "Default: False.")
+@click.option("--spaces_formatting", type=dict, default={'space-nospace': '&esp-rien;', 'nospace-space': '&rien-esp;'},
+              help="The string that represent an added and a space. Default: two XML entity-like strings.")
+def tag(model, filename,  entities, spaces_formatting, device="cpu", batch_size=64, linebreaks=True):
     """ Tag all [FILENAME] using [MODEL]"""
     print("Loading the model.")
     model = BoudamsTagger.load(model, device=device)
     print("Model loaded.")
     remove_line = True
-    spaces = re.compile("\s+")
+    spaces_only = re.compile("[^\S\n]")
+    spaces = re.compile(r"\s+")
+    line_breaks = re.compile(r"\n")
     apos = re.compile("['’]")
     for file in tqdm.tqdm(filename):
         out_name = file.name.replace(".txt", ".tokenized.txt")
         content = file.read()  # Could definitely be done a better way...
         if remove_line:
-            content = spaces.sub("", content)
+            if linebreaks:
+                content = spaces_only.sub("", content)
+                content = line_breaks.sub("\n", content)
+            else:
+                content = spaces.sub("", content)
 
         # Now, extract apostrophes, remove them, and reinject them
-        apos_positions = [ i for i in range(len(content)) if content[i] in ["'", "’"] ]
+        apos_positions = [i for i in range(len(content)) if content[i] in ["'", "’"]]
         content = apos.sub("", content)
 
         with open(out_name, "w") as out_io:
             out = ''
             for tokenized_string in model.annotate_text(content, batch_size=batch_size):
-                out = out + tokenized_string+" "
+                out = out + tokenized_string + " "
 
             # Reinject apostrophes
-            #out = 'Sainz Tiebauz fu nez en l evesché de Troies ; ses peres ot non Ernous et sa mere, Gile et furent fra'
+            # out = 'Sainz Tiebauz fu nez en l evesché de Troies ; ses peres ot non Ernous et sa mere, Gile et furent fra'
             true_index = 0
+
+            # we can give the tagger a text with newlines so that is great,
+            # no need to deal with it.
             for i in range(len(out) + len(apos_positions)):
                 if true_index in apos_positions:
                     out = out[:i] + "'" + out[i:]
@@ -297,7 +311,13 @@ def tag(model, filename, device="cpu", batch_size=64):
                         true_index = true_index + 1
 
             out_io.write(out)
+        if entities:
+            manage_space(file.name, spaces_formatting)
         # print("--- File " + file.name + " has been tokenized")
+
+
+
+
 
 
 @cli.command("tag-check")
@@ -309,7 +329,7 @@ def tag_check(config_model, content, device="cpu", batch_size=64):
         print("Loading the model.")
         tokenizer = BoudamsTagger.load(model, device=device)
         print("Model loaded.")
-        print(model + "\t" +" ".join(tokenizer.annotate_text(content, batch_size=batch_size)))
+        print(model + "\t" + " ".join(tokenizer.annotate_text(content, batch_size=batch_size)))
 
 
 @cli.command("graph")
@@ -339,7 +359,7 @@ def graph(model, output, format):
         model.model,
         args=(
             torch.zeros([64, model.out_max_sentence_length], dtype=torch.long),
-            tensor.new_full((64, ), model.out_max_sentence_length)
+            tensor.new_full((64,), model.out_max_sentence_length)
         ))
 
     # Use a different color theme
